@@ -2,10 +2,19 @@ import { Graph, Shape, Addon } from "@antv/x6";
 import RectNode from "./RectNode.vue";
 import { register } from "@antv/x6-vue-shape";
 
+export const typeColor = {
+  1: "#9bcdff",
+  2: "#D8F5C5",
+  3: "#c0f2ff",
+  4: "#F2E3C4",
+};
+// 连接桩
 export const ports = {
   groups: {
     top: {
-      position: "top",
+      position: {
+        name: "absolute",
+      },
       attrs: {
         circle: {
           r: 4,
@@ -20,7 +29,9 @@ export const ports = {
       },
     },
     right: {
-      position: "right",
+      position: {
+        name: "absolute",
+      },
       attrs: {
         circle: {
           r: 4,
@@ -35,7 +46,9 @@ export const ports = {
       },
     },
     bottom: {
-      position: "bottom",
+      position: {
+        name: "absolute",
+      },
       attrs: {
         circle: {
           r: 4,
@@ -50,7 +63,9 @@ export const ports = {
       },
     },
     left: {
-      position: "left",
+      position: {
+        name: "absolute",
+      },
       attrs: {
         circle: {
           r: 4,
@@ -68,37 +83,75 @@ export const ports = {
   items: [
     {
       group: "top",
+      args: {
+        x: "50%",
+        y: "0%",
+      },
     },
     {
       group: "right",
+      args: {
+        x: "100%",
+        y: "50%",
+      },
     },
     {
       group: "bottom",
+      args: {
+        x: "50%",
+        y: "100%",
+      },
     },
     {
       group: "left",
+      args: {
+        x: "0%",
+        y: "50%",
+      },
     },
   ],
 };
 
 // 初始化画布
-export function initGraph() {
+export function initGraph(container) {
   return new Graph({
-    container: document.getElementById("graphContainer"),
+    container: document.getElementById(container),
     width: "100%",
     height: "100%",
     grid: true,
     panning: {
       enabled: true,
     },
-    // selecting: {
-    //   enabled: true,
-    //   multiple: true,
-    //   rubberband: true, // 启用框选
-    //   modifiers: ["ctrl", "meta"],
-    //   movable: true,
-    //   showNodeSelectionBox: true,
-    // },
+    // 框选
+    selecting: {
+      enabled: false,
+      multiple: true,
+      rubberband: true,
+      modifiers: ["ctrl", "meta"],
+      movable: true,
+      showNodeSelectionBox: true,
+      pointerEvents: "none",
+    },
+    // 分组
+    embedding: {
+      enabled: true,
+      findParent({ node }) {
+        const bbox = node.getBBox();
+        return this.getNodes().filter((node) => {
+          // 只有 data.parent 为 true 的节点才是父节点
+          const data = node.store.data;
+          if (data && data.parent) {
+            const targetBBox = node.getBBox();
+            return bbox.isIntersectWithRect(targetBBox);
+          }
+          return false;
+        });
+      },
+    },
+    // 调整节点大小
+    resizing: {
+      enabled: true,
+    },
     // snapline: true,
     background: {
       color: "#F2F7FA",
@@ -107,12 +160,18 @@ export function initGraph() {
       enabled: true,
       modifiers: ["ctrl", "meta"],
     },
-    interacting: {
-      edgeLabelMovable: true,
-    },
+    // interacting: {
+    //   edgeLabelMovable: true,
+    // },
+    interacting: true, //是否启用交互
 
     connecting: {
-      router: "manhattan",
+      router: {
+        name: "manhattan",
+        args: {
+          excludeShapes: ["custom-rect-text"],
+        },
+      },
       connector: {
         name: "normal",
         args: {
@@ -123,17 +182,18 @@ export function initGraph() {
       snap: {
         radius: 20,
       },
+      // 连线初始配置
       createEdge() {
         return new Shape.Edge({
           attrs: {
             line: {
               stroke: "#A2B1C3",
               strokeWidth: 1,
-              // targetMarker: {
-              //   name: "block",
-              //   width: 12,
-              //   height: 8,
-              // },
+              targetMarker: {
+                name: "block",
+                width: 6,
+                height: 6,
+              },
             },
             text: {
               fontSize: 12,
@@ -194,16 +254,15 @@ export function initStencil(graph) {
     ],
     getDropNode: (node) => {
       const { width, height } = node.size();
-      if (
-        node.store.data.shape == "custom-circle" ||
-        node.store.data.shape == "custom-rect-dashed"
-      ) {
-        // 返回一个新的节点作为实际放置到画布上的节点
-        return node.clone().size(width * 1.5, height * 1.5);
-      } else if (!node.store.data.shape.includes("custom-rect-type")) {
-        return node.clone().size(150, 40);
+      if (node.store.data.shape.includes("custom-rect-node")) {
+        return node.clone().size(180, 70);
+      } else if (node.store.data.shape.includes("custom-rect-group")) {
+        return node
+          .clone()
+          .size(width * 1.5, height * 1.5)
+          .attr("text/text", "");
       } else {
-        return node.clone().size(width, height);
+        return node.clone().size(width * 1.5, height * 1.5);
       }
     },
   });
@@ -361,6 +420,53 @@ export function registerNode(graph, stencil) {
     true
   );
 
+  Graph.registerNode(
+    "custom-rect-text",
+    {
+      inherit: "rect",
+      width: 50,
+      height: 30,
+      zIndex: 10,
+      attrs: {
+        body: {
+          strokeWidth: 0,
+          strokeDasharray: 0,
+          stroke: "rgba(255,255,255,0.1)",
+          fill: "rgba(255,255,255,0.1)",
+        },
+        text: {
+          fontSize: 12,
+          fill: "#262626",
+        },
+      },
+      // ports: { ...ports },
+    },
+    true
+  );
+  Graph.registerNode(
+    "custom-rect-group",
+    {
+      inherit: "rect",
+      width: 66,
+      height: 40,
+      zIndex: 10,
+      parent: true,
+      attrs: {
+        body: {
+          strokeWidth: 1,
+          strokeDasharray: 3,
+          stroke: "#5F95FF",
+          fill: "rgba(255,255,255,0)",
+        },
+        text: {
+          fontSize: 12,
+          fill: "#262626",
+        },
+      },
+    },
+    true
+  );
+
   // 节点类型
   Graph.registerNode(
     "custom-rect-type1",
@@ -373,7 +479,7 @@ export function registerNode(graph, stencil) {
         body: {
           strokeWidth: 1,
           stroke: "#5F95FF",
-          fill: "#9bcdff",
+          fill: typeColor[1],
         },
         text: {
           fontSize: 12,
@@ -395,7 +501,7 @@ export function registerNode(graph, stencil) {
         body: {
           strokeWidth: 1,
           stroke: "#5F95FF",
-          fill: "#c0f2ff",
+          fill: typeColor[2],
         },
         text: {
           fontSize: 12,
@@ -417,7 +523,29 @@ export function registerNode(graph, stencil) {
         body: {
           strokeWidth: 1,
           stroke: "#5F95FF",
-          fill: "#c9d8b4",
+          fill: typeColor[3],
+        },
+        text: {
+          fontSize: 12,
+          fill: "#262626",
+        },
+      },
+      ports: { ...ports },
+    },
+    true
+  );
+  Graph.registerNode(
+    "custom-rect-type4",
+    {
+      inherit: "rect",
+      width: 150,
+      height: 30,
+      zIndex: 10,
+      attrs: {
+        body: {
+          strokeWidth: 1,
+          stroke: "#5F95FF",
+          fill: typeColor[4],
         },
         text: {
           fontSize: 12,
@@ -441,7 +569,11 @@ export function registerNode(graph, stencil) {
   });
   const r2 = graph.createNode({
     shape: "custom-rect-node",
-    label: "过程",
+    label1: "节点名称",
+    label2: "角色名称",
+    type: 1,
+    textColor1: "#2c3e50",
+    textColor2: "#2c3e50",
     attrs: {
       body: {
         rx: 125,
@@ -489,23 +621,36 @@ export function registerNode(graph, stencil) {
   });
 
   const r8 = graph.createNode({
+    shape: "custom-rect-text",
+    label: "文字",
+  });
+
+  const r9 = graph.createNode({
     shape: "custom-rect-type1",
     label: "批量保前-批次审批流程",
   });
-  const r9 = graph.createNode({
+  const r10 = graph.createNode({
     shape: "custom-rect-type2",
+    label: "批量保前-费用与放款落实",
+  });
+  const r11 = graph.createNode({
+    shape: "custom-rect-type3",
     label: "批量保后-批量处理",
   });
-  const r10 = graph.createNode({
-    shape: "custom-rect-type3",
+  const r12 = graph.createNode({
+    shape: "custom-rect-type4",
     label: "批量保后-风险待办",
   });
-  stencil.load([r1, r2, r3, r4, r5, r6, r7], "group1");
-  stencil.load([r8, r9, r10], "group2");
+  const r13 = graph.createNode({
+    shape: "custom-rect-group",
+    label: "群组",
+  });
+  stencil.load([r1, r2, r3, r4, r5, r6, r7, r8, r13], "group1");
+  stencil.load([r9, r10, r11, r12], "group2");
 }
 
 // 事件
-export function eventFun(graph) {
+export function eventOnFun(graph, callback) {
   // 控制连接桩显示/隐藏
   const showPorts = (ports, show) => {
     for (let i = 0, len = ports.length; i < len; i += 1) {
@@ -516,11 +661,10 @@ export function eventFun(graph) {
   // 点击节点显示删除按钮
   graph.on("node:click", ({ node }) => {
     if (!node.hasTool("button-remove")) {
-      const x = node.store.data.shape == "custom-rect-node" ? 10 : "50%";
       node.addTools([
         {
           name: "button-remove",
-          args: { x, y: 5 },
+          args: { x: 10, y: 5 },
         },
       ]);
     } else {
@@ -529,12 +673,10 @@ export function eventFun(graph) {
   });
 
   // 鼠标移入展示连接点
-  graph.on("node:mouseenter", ({ node }) => {
-    if (!node.store.data.isEdit) {
-      const container = document.getElementById("graphContainer");
-      const ports = container.querySelectorAll(".x6-port-body");
-      showPorts(ports, true);
-    }
+  graph.on("node:mouseenter", () => {
+    const container = document.getElementById("graphContainer");
+    const ports = container.querySelectorAll(".x6-port-body");
+    showPorts(ports, true);
   });
   graph.on("node:mouseleave", () => {
     const container = document.getElementById("graphContainer");
@@ -542,7 +684,7 @@ export function eventFun(graph) {
     showPorts(ports, false);
   });
 
-  // 鼠标移入连线展示删除/拖动线段工具
+  // 鼠标点击连线展示删除/拖动线段工具
   graph.on("edge:click", ({ edge }) => {
     if (!edge.hasTool("button-remove")) {
       edge.addTools([
@@ -588,7 +730,17 @@ export function eventFun(graph) {
 
   // 双击编辑节点
   graph.on("node:dblclick", ({ node, e }) => {
-    if (node.store.data.view !== "vue-shape-view") {
+    if (
+      node.store.data.shape === "custom-rect-node" ||
+      node.store.data.shape === "custom-rect-group"
+    ) {
+      node.prop("isEdit", true);
+      callback({
+        nodeClicked: true,
+        node: node,
+        isGroup: node.store.data.shape === "custom-rect-group",
+      });
+    } else {
       node.addTools({
         name: "node-editor",
         args: {
@@ -621,10 +773,39 @@ export function eventFun(graph) {
         label2: node.store.data.label2,
         type: node.store.data.type,
         isEdit: node.store.data.isEdit,
-        width: 150,
-        height: 40,
+        width: 180,
+        height: 70,
       });
       graph.removeNode(node.id);
     }
   });
+
+  // 监听边的右键事件
+  graph.on("edge:contextmenu", ({ edge, e }) => {
+    callback({ contextmenu: true, edge, e });
+  });
+
+  // 监听节点的右键事件
+  graph.on("node:contextmenu", ({ node, e }) => {
+    if (node.store.data.shape !== "custom-rect-node") {
+      callback({ contextmenu: true, node, e });
+    }
+  });
+
+  // 空白处点击事件
+  graph.on("blank:click", () => {
+    callback({ blankClick: true });
+  });
+}
+
+// 清除事件
+export function eventOffFun(graph) {
+  graph.off("node:click");
+  graph.off("node:mouseenter");
+  graph.off("node:mouseleave");
+  graph.off("edge:click");
+  graph.off("node:dblclick");
+  graph.off("edge:dblclick");
+  graph.off("node:changed");
+  graph.off("node:contextmenu");
 }
